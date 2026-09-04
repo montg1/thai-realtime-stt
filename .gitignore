@@ -1,0 +1,27 @@
+# Model weights — several GB, fetched at runtime or converted locally.
+models/
+*.nemo
+*.bin
+*.safetensors
+
+# Extracted from the upstream image; not ours to redistribute.
+example_browserclient/whisper-th-small-ct2-int8-*/
+patch/audio_recorder.py.orig
+example_browserclient/server.py.orig
+example_browserclient/server.py.bak
+
+# Local test artefacts
+*.wav
+*.log
+qtest.py
+bench.py
+bench2.py
+wstest2.py
+
+# Editor / OS
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+__pycache__/
+*.pyc
