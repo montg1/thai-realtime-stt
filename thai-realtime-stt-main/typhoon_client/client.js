@@ -87,7 +87,10 @@ function setServerState(ok, label) {
   serverReady = ok;
   el.dotServer.className = "dot" + (ok ? " ok" : "");
   el.txtServer.textContent = label;
-  el.btnMic.disabled = !ok;
+  // ไม่ disable ปุ่มไมค์ตามสถานะเซิร์ฟเวอร์ เดิมพอ wss ต่อไม่ติดปุ่มจะกดไม่ลง
+  // แล้วดูไม่ออกว่าเป็นเพราะไมค์หรือเพราะเน็ต — ให้กดได้แล้วบอกสาเหตุแทน
+  el.btnMic.disabled = false;
+  if (!ok && recording) el.txtMic.textContent = "ไมค์ทำงาน แต่ส่งไม่ได้ — เซิร์ฟเวอร์หลุด";
 }
 
 function connect() {

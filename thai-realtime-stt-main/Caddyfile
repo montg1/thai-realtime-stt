@@ -24,8 +24,14 @@ https://192.168.10.234:9121 {
 	bind 0.0.0.0
 	tls internal
 
+	# เปิด access log ไว้ดูว่าเบราว์เซอร์ยิง /ws มาถึงมั้ย และ handshake ผ่านหรือไม่
+	log {
+		output stdout
+		format console
+	}
+
 	handle /ws* {
-		reverse_proxy host.docker.internal:9001
+		reverse_proxy host.docker.internal:9005
 	}
 
 	handle {
