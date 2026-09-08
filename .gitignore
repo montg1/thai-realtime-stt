@@ -1,0 +1,24 @@
+# น้ำหนักโมเดล — หลาย GB แปลง/ดาวน์โหลดเอาเองตาม NOTES.md
+thai-realtime-stt-main/models/
+*.nemo
+*.bin
+*.safetensors
+
+# ไฟล์เสียงทดสอบ — ตัดมาจาก YouTube ไม่ควรเก็บลง repo
+samples/
+*.mp3
+*.wav
+*.webm
+*.pcm
+
+# ผลรันชั่วคราว
+*.log
+__pycache__/
+*.pyc
+webroot/
+
+# ของที่ระบบสร้าง
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini

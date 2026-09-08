@@ -1,0 +1,35 @@
+# HTTPS ให้หน้าเว็บ เพื่อให้ Chrome ยอมปล่อยไมโครโฟน
+#
+# getUserMedia ทำงานเฉพาะบน secure context — https หรือ http://localhost เท่านั้น
+# LAN IP ธรรมดาไม่เข้าข่าย ไม่มีข้อยกเว้นให้ IP วงใน
+#
+# หน้าเว็บกับ websocket อยู่ origin เดียวกันโดยตั้งใจ ถ้าแยก wss ไปคนละพอร์ต
+# เบราว์เซอร์จะปฏิเสธ cert ของพอร์ตนั้นเงียบ ๆ ตอน handshake โดยไม่มีหน้าให้กดยอมรับ
+# รวมไว้พอร์ตเดียวจึงกดผ่าน cert warning ครั้งเดียวแล้วใช้ได้ทั้งสองอย่าง
+#
+#   docker run -d --name rtstt-tls -p 9121:9121 \
+#     --add-host=host.docker.internal:host-gateway \
+#     -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro" \
+#     -v "$PWD/typhoon_client:/srv/admin:ro" \
+#     -v caddy-data:/data caddy:2
+
+# default_sni จำเป็นเพราะไซต์นี้เป็น IP ไม่ใช่ชื่อโดเมน — สเปก TLS ห้ามใส่ IP ใน SNI
+# เบราว์เซอร์จึงต่อมาแบบไม่มี ServerName และ Caddy จะหา cert ไม่เจอ จบด้วย handshake error
+{
+	auto_https disable_redirects
+	default_sni 192.168.10.234
+}
+
+https://192.168.10.234:9121 {
+	bind 0.0.0.0
+	tls internal
+
+	handle /ws* {
+		reverse_proxy host.docker.internal:9001
+	}
+
+	handle {
+		root * /srv
+		file_server
+	}
+}
