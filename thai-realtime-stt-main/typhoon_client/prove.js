@@ -47,6 +47,13 @@ function connect() {
     // audio_ms คือตำแหน่งในสตรีมที่ผลนี้ครอบคลุมถึง ที่เหลือคือเวลาที่ใช้ประมวลผล
     const lag = d.audio_ms == null ? null : (sentMs - d.audio_ms) / 1000;
 
+    if (d.type === "hello") {
+      // เวอร์ชันที่โชว์คือของ "เซิร์ฟเวอร์" ไม่ใช่ของไฟล์ที่เบราว์เซอร์โหลดมา
+      // ถ้าสองอย่างไม่ตรงกันจะได้รู้ ไม่ใช่เดาว่ารันโค้ดล่าสุดอยู่
+      el("ver").textContent = "v" + d.version + (d.diarize ? " · diarize" : "");
+      el("ver").title = "server v" + d.version + "\nmodel: " + d.model;
+      return;
+    }
     if (d.type === "realtime") {
       el("interim").textContent = d.text;
       if (lag != null) {

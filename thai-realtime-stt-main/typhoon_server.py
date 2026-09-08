@@ -46,9 +46,12 @@ SEG_OVERLAP = float(os.environ.get("SEG_OVERLAP", "0.6"))
 # ส่วนความยาวหน้าต่างคุมคุณภาพ embedding (วัดแล้ว 3s แยกคนดีกว่า 1.5s ชัดเจน)
 # Utterr ผูกไว้ที่ 1.0s/0.1s เราแยกสองค่าออกจากกันเพื่อเอาข้อดีทั้งคู่
 EMB_EVERY = float(os.environ.get("DIAR_HOP", "0.25"))   # ถี่แค่ไหนถึงจะสกัด embedding
-# ตัดประโยคตอนเปลี่ยนคนพูด ไม่ใช่รอแต่ความเงียบ — คนพูดสลับไว ๆ ไม่มีช่วงเงียบให้รอ
-# ต้องเห็นคนใหม่ติดกันกี่หน้าต่างถึงจะเชื่อว่าเปลี่ยนจริง ไม่ใช่ embedding แกว่งชั่วครู่
-CHANGE_WINDOWS = int(os.environ.get("DIAR_CHANGE_WIN", "3"))
+# ตัดประโยคตอนเปลี่ยนคนพูด — 0 = ปิด (ค่าเริ่มต้น) ตัวเลข = ต้องเห็นคนใหม่ติดกันกี่หน้าต่าง
+#
+# ปิดไว้เพราะทดลองแล้วผลแย่ลง: ประโยคสั้นลงเหลือ ~1.2s ทำให้หน้าต่าง embedding
+# ต่อประโยคเหลือ ~5 อันจากเดิม ~20 โหวตผู้พูดจึงพลิกง่ายและแบ่งคนมั่วขึ้น
+# ถ้าจะลองใหม่ควรแก้ race ของ spk_votes ก่อน แล้วตั้ง DIAR_CHANGE_WIN=3
+CHANGE_WINDOWS = int(os.environ.get("DIAR_CHANGE_WIN", "0"))
 # ประโยคต้องยาวพอควรก่อนถึงยอมให้ตัด ไม่งั้นจะแตกเป็นเศษสั้น ๆ จน ASR ถอดไม่ได้เรื่อง
 CHANGE_MIN_SEC = float(os.environ.get("DIAR_CHANGE_MIN", "1.2"))
 VAD_MODE = 2                    # matches webrtc_sensitivity in rtstt
@@ -58,6 +61,14 @@ VAD_MODE = 2                    # matches webrtc_sensitivity in rtstt
 VAD_KIND = os.environ.get("VAD", "silero")
 SILERO_THRESH = float(os.environ.get("VAD_THRESH", "0.5"))
 FRAME_LEN = 512 if VAD_KIND == "silero" else FRAME_LEN   # silero v6 รับ 512 ตัวอย่างเป๊ะที่ 16k
+
+# อ่านเวอร์ชันจากไฟล์เดียวกับที่หน้าเว็บอ่าน จะได้ไม่มีทางไม่ตรงกัน
+try:
+    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                           "version.json")) as _f:
+        VERSION = json.load(_f)["version"]
+except Exception:
+    VERSION = "unknown"
 
 print(f"Loading ASR: {MODEL_ID}", flush=True)
 import nemo.collections.asr as nemo_asr
@@ -101,6 +112,7 @@ if embedder:
                 cohesive=diarize.COHESIVE, min_cluster=diarize.MIN_CLUSTER,
                 min_seg=diarize.MIN_SEG_SEC, max_emb=diarize.MAX_EMB_PER_SPK,
                 max_pending=diarize.MAX_PENDING)
+print(f"VERSION {VERSION}", flush=True)
 print("CONFIG " + "  ".join(f"{k}={v}" for k, v in _cfg.items()), flush=True)
 print(f"ASR ready on :{PORT}", flush=True)
 
@@ -203,6 +215,8 @@ class Session:
             return
         self.spk_votes.append(sid)
 
+        if not CHANGE_WINDOWS:
+            return
         self.recent.append(sid)
         del self.recent[:-CHANGE_WINDOWS]
         if len(self.recent) < CHANGE_WINDOWS or len(set(self.recent)) != 1:
@@ -279,6 +293,8 @@ async def handler(ws, path=None):
                 return
 
     pump_task = asyncio.ensure_future(pump())
+    send({"type": "hello", "version": VERSION, "model": os.path.basename(MODEL_ID),
+          "diarize": embedder is not None})
     session = Session(send)
     try:
         async for message in ws:

@@ -102,6 +102,12 @@ function connect() {
   socket.onmessage = (event) => {
     let data;
     try { data = JSON.parse(event.data); } catch { return; }
+    if (data.type === "hello") {
+      const v = document.getElementById("ver");
+      v.textContent = "v" + data.version + (data.diarize ? " · diarize" : "");
+      v.title = "server v" + data.version + "\nmodel: " + data.model;
+      return;
+    }
     if (data.type === "realtime") {
       showInterim(data.text);
     } else if (data.type === "fullSentence") {

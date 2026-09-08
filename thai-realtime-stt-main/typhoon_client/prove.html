@@ -53,12 +53,16 @@
   label.btn { background:var(--panel); color:var(--fg); border:1px solid var(--line);
               border-radius:7px; padding:8px 14px; font-size:13px; cursor:pointer; }
   label.btn:hover { border-color:var(--accent); }
+  .ver { font-size:11px; color:var(--dim); border:1px solid var(--line);
+         border-radius:4px; padding:2px 7px; font-variant-numeric:tabular-nums;
+         cursor:help; }
 </style>
 </head>
 <body>
 <header>
   <h1>Real-time Speaker Diarization</h1>
   <span><span class="dot" id="dot"></span><span id="conn">Disconnected</span></span>
+  <span id="ver" class="ver" title="เวอร์ชันของเซิร์ฟเวอร์ที่ต่ออยู่">–</span>
   <span style="flex:1"></span>
   <label class="btn">Select Audio File<input type="file" id="file" accept="audio/*"></label>
   <button id="mic">🎤 Speak via Microphone</button>

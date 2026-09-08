@@ -1,0 +1,70 @@
+{
+  "version": "0.5.0",
+  "date": "2026-09-08",
+  "history": [
+    {
+      "version": "0.5.0",
+      "date": "2026-09-08",
+      "title": "ปิดการตัดประโยคตอนเปลี่ยนคนพูด + แสดงเวอร์ชันบน UI",
+      "changes": [
+        "DIAR_CHANGE_WIN ค่าเริ่มต้นเป็น 0 (ปิด) — ผู้ใช้เทียบ A/B แล้วชอบแบบปิดมากกว่า ประโยคที่สั้นลงทำให้โหวตผู้พูดพลิกง่าย",
+        "เก็บโค้ดไว้ เปิดได้ด้วย DIAR_CHANGE_WIN=3 ถ้าแก้ race ของ spk_votes แล้ว",
+        "version.json: บันทึกว่าแต่ละรุ่นแก้อะไร เซิร์ฟเวอร์อ่านไฟล์นี้แล้วส่งไปกับข้อความ hello",
+        "UI ทั้งสองหน้าโชว์เวอร์ชันของเซิร์ฟเวอร์ที่ต่ออยู่ (ไม่ใช่ของไฟล์ที่เบราว์เซอร์โหลด)",
+        "git: เริ่ม version control ที่ /root/STT"
+      ]
+    },
+    {
+      "version": "0.4.0",
+      "date": "2026-09-08",
+      "title": "ตัดประโยคตอนเปลี่ยนคนพูด + แยกชื่อผู้พูดตาม session",
+      "changes": [
+        "typhoon_server: ตัดประโยคเมื่อ diarization เห็นคนใหม่ติดกัน 3 หน้าต่าง (CHANGE_WIN) ไม่ใช่รอแต่ความเงียบ — คนพูดสลับไวไม่มีช่วงเงียบให้รอ",
+        "typhoon_server: ส่ง audio_ms ไปกับทุกข้อความ บอกว่าผลนี้ครอบคลุมเสียงถึงวินาทีไหน ใช้วัดหน่วงจากเวลาในสตรีมจริง",
+        "typhoon_server: ลบ EMB_WINDOW ที่นิยามซ้ำกับ diarize.WINDOW_SEC แล้วค่าไม่ตรงกัน (5.0 vs 3.0)",
+        "typhoon_server: พิมพ์บรรทัด CONFIG ตอนสตาร์ท ใช้ยืนยันว่ารันโค้ดล่าสุดจริง",
+        "client: หน้าไมค์แสดงสีตามผู้พูด ตั้งชื่อได้ คัดลอกติดชื่อไปด้วย",
+        "prove.html: หน้าใหม่ พิสูจน์ realtime ด้วยไฟล์หรือไมค์ เล่นเสียงซิงก์กับผลถอด",
+        "speakers.js: แยกชื่อผู้พูดตาม session — สองจอเปิดพร้อมกันคือคนละ websocket เลข speaker จึงไม่เกี่ยวกัน ชื่อเคยทับกัน",
+        "known issue: spk_votes ถูกแตะจากสองเธรด (_emit_final กับ _emit_embedding) โหวตอาจหายหรือข้ามประโยค ยังไม่แก้"
+      ]
+    },
+    {
+      "version": "0.3.0",
+      "date": "2026-09-07",
+      "title": "Silero VAD + เพดานความยาวประโยค + จูน diarization",
+      "changes": [
+        "VAD: เปลี่ยนจาก webrtcvad เป็น Silero v6.2.1 — webrtcvad มองดนตรีประกอบเป็นเสียงพูด คลิปเดียวกันได้ 4 ประโยค เทียบ 20",
+        "MAX_SEGMENT 5.0s: วงสนทนาไม่มีช่วงเงียบ 0.7s ให้ประโยคปิด เคยได้ 1 ประโยคใน 5 นาที",
+        "SEG_OVERLAP 0.6s: ยกท้ายประโยคไปเป็นต้นประโยคถัดไป กันคำขาดตรงรอยตัด",
+        "DIAR_HOP 1.0s -> 0.25s: ไทม์ไลน์ละเอียดขึ้น ช่วงอุ่นเครื่อง 8 ประโยค -> 0",
+        "กรอง VAD ต่อหน้าต่าง embedding: ไม่เอาความเงียบท้ายประโยคไปเจือจาง",
+        "DIAR_MIN_SEG 2.0 -> 0.8s: บทพูดสั้นไม่เคยถูก embed ตัดสินไม่ได้ 51% -> 14%",
+        "MAX_EMB 40 / MAX_PENDING 60: กัน centroid ของคนที่มาก่อนกลืนคนที่เข้ามาทีหลัง",
+        "classify: embedding ที่ไม่เข้าเกณฑ์คนเดิมชัดเจนต้องเข้ากอง pending เสมอ เดิมถูกกลืนแล้วทิ้ง"
+      ]
+    },
+    {
+      "version": "0.2.0",
+      "date": "2026-09-07",
+      "title": "เพิ่ม diarization",
+      "changes": [
+        "diarize.py: SpeakerHandler ยกจาก Utterr ตัด PyQt/soundcard ออก",
+        "embedding: pyannote WeSpeaker ResNet34-LM (สลับเป็น TitaNet ได้ด้วย DIAR_EMB)",
+        "Dockerfile: เพิ่ม pyannote.audio 4.0.7 แยก layer (รวม layer เดียวกันแล้ว resolver ชนกัน)",
+        "Dockerfile: webrtcvad -> webrtcvad-wheels (ตัวต้นทางไม่มี wheel ต้องมี gcc)"
+      ]
+    },
+    {
+      "version": "0.1.0",
+      "date": "2026-09-07",
+      "title": "เปลี่ยนมาใช้ Pathumma RNNT เป็นโมเดลหลัก",
+      "changes": [
+        "ASR: nectec/Pathumma-stt-th-fastconformer-rnnt-large แทน Whisper stack",
+        "เหตุผล: ถอดตัวเลขเป็นเลขอารบิก (Typhoon ไม่ทำเลยใน 130 ตัวอย่าง) และ CER ดีกว่าทั้ง 2 ชุดที่วัด",
+        "typhoon_server: ASR_MODEL/ASR_PORT ตั้งผ่าน env ได้ รันหลายโมเดลเทียบกันพร้อมกัน",
+        "typhoon_server: repo ที่มีแต่ไฟล์ .nemo ต้องใช้ restore_from ไม่ใช่ from_pretrained"
+      ]
+    }
+  ]
+}
