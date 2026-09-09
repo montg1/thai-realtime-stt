@@ -74,7 +74,6 @@ services:
       - "${HTTPS_PORT:-9121}:9121"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - ./typhoon_client:/srv/admin:ro
       - caddy-data:/data
       - caddy-config:/config
     extra_hosts:

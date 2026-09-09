@@ -18,7 +18,6 @@ warnings.filterwarnings("ignore")
 logging.disable(logging.WARNING)
 
 import numpy as np
-import webrtcvad
 import websockets
 from scipy.signal import resample
 
@@ -28,8 +27,6 @@ from scipy.signal import resample
 MODEL_ID = os.environ.get("ASR_MODEL", "typhoon-ai/typhoon-asr-realtime")
 PORT = int(os.environ.get("ASR_PORT", "9002"))
 SR = 16000                      # model sample rate
-FRAME_MS = 30                   # webrtcvad accepts 10/20/30ms only
-FRAME_LEN = SR * FRAME_MS // 1000
 SILENCE_TO_FINALIZE = 0.7       # matches post_speech_silence_duration in rtstt
 REALTIME_EVERY = 0.35           # how often to re-transcribe the growing buffer
 MIN_SPEECH = 0.3                # ignore blips shorter than this
@@ -46,21 +43,10 @@ SEG_OVERLAP = float(os.environ.get("SEG_OVERLAP", "0.6"))
 # ส่วนความยาวหน้าต่างคุมคุณภาพ embedding (วัดแล้ว 3s แยกคนดีกว่า 1.5s ชัดเจน)
 # Utterr ผูกไว้ที่ 1.0s/0.1s เราแยกสองค่าออกจากกันเพื่อเอาข้อดีทั้งคู่
 EMB_EVERY = float(os.environ.get("DIAR_HOP", "0.25"))   # ถี่แค่ไหนถึงจะสกัด embedding
-# ตัดประโยคตอนเปลี่ยนคนพูด — 0 = ปิด (ค่าเริ่มต้น) ตัวเลข = ต้องเห็นคนใหม่ติดกันกี่หน้าต่าง
-#
-# ปิดไว้เพราะทดลองแล้วผลแย่ลง: ประโยคสั้นลงเหลือ ~1.2s ทำให้หน้าต่าง embedding
-# ต่อประโยคเหลือ ~5 อันจากเดิม ~20 โหวตผู้พูดจึงพลิกง่ายและแบ่งคนมั่วขึ้น
-# race ของโหวตแก้แล้วใน v0.8.0 เปิดได้ด้วย DIAR_CHANGE_WIN=3 ถ้าวัดแล้วดีกว่า
-CHANGE_WINDOWS = int(os.environ.get("DIAR_CHANGE_WIN", "0"))
-# ประโยคต้องยาวพอควรก่อนถึงยอมให้ตัด ไม่งั้นจะแตกเป็นเศษสั้น ๆ จน ASR ถอดไม่ได้เรื่อง
-CHANGE_MIN_SEC = float(os.environ.get("DIAR_CHANGE_MIN", "1.2"))
-VAD_MODE = 2                    # matches webrtc_sensitivity in rtstt
-# webrtcvad ตัดสินจากพลังงานในย่านความถี่ ซึ่งมองว่าดนตรีประกอบเป็นเสียงพูด
-# ทำให้คลิปที่มี BGM ถูกมองว่าพูดต่อเนื่องทั้งคลิป ประโยคเดียวยาวหลายสิบวินาที
-# silero เป็นโมเดลนิวรัลที่แยกเสียงพูดจากเสียงอื่นได้ จึงเป็นค่าเริ่มต้น
-VAD_KIND = os.environ.get("VAD", "silero")
+# ใช้ silero อย่างเดียว — webrtcvad ตัดสินจากพลังงานในย่านความถี่ จึงมองดนตรีประกอบ
+# เป็นเสียงพูด วัดแล้วคลิปเดียวกันได้ 4 ประโยค เทียบกับ silero 20 ประโยค
 SILERO_THRESH = float(os.environ.get("VAD_THRESH", "0.5"))
-FRAME_LEN = 512 if VAD_KIND == "silero" else FRAME_LEN   # silero v6 รับ 512 ตัวอย่างเป๊ะที่ 16k
+FRAME_LEN = 512                 # silero v6 รับ 512 ตัวอย่างเป๊ะที่ 16k
 
 # อ่านเวอร์ชันจากไฟล์เดียวกับที่หน้าเว็บอ่าน จะได้ไม่มีทางไม่ตรงกัน
 try:
@@ -91,23 +77,17 @@ if os.environ.get("DIARIZE", "0") == "1":
     embedder = diarize.Embedder()
     print("diarization on", flush=True)
 
-_silero = None
-if VAD_KIND == "silero":
-    import torch
-    _silero, _ = torch.hub.load("snakers4/silero-vad", "silero_vad", trust_repo=True)
-    _silero.eval()
-    _vad_lock = threading.Lock()
-    print("VAD: silero", flush=True)
-else:
-    print(f"VAD: webrtcvad mode {VAD_MODE}", flush=True)
+import torch
+_silero, _ = torch.hub.load("snakers4/silero-vad", "silero_vad", trust_repo=True)
+_silero.eval()
+_vad_lock = threading.Lock()
 
 # พิมพ์ค่าที่ใช้จริงทุกครั้ง เพราะไฟล์ถูก bind mount เข้ามาและมี __pycache__ ค้างได้
 # ถ้าตัวเลขไม่ตรงกับที่แก้ล่าสุด แปลว่ากำลังรันโค้ดเก่าอยู่ ไม่ต้องเดา
-_cfg = dict(vad=VAD_KIND, max_segment=MAX_SEGMENT, overlap=SEG_OVERLAP,
+_cfg = dict(vad="silero", max_segment=MAX_SEGMENT, overlap=SEG_OVERLAP,
             silence=SILENCE_TO_FINALIZE)
 if embedder:
     _cfg.update(emb=embedder.kind, hop=EMB_EVERY, window=diarize.WINDOW_SEC,
-                change_win=CHANGE_WINDOWS, change_min=CHANGE_MIN_SEC,
                 same=diarize.SAME_SPEAKER, weak=diarize.WEAK_MATCH,
                 cohesive=diarize.COHESIVE, min_cluster=diarize.MIN_CLUSTER,
                 min_seg=diarize.MIN_SEG_SEC, max_emb=diarize.MAX_EMB_PER_SPK,
@@ -135,7 +115,6 @@ class Session:
 
     def __init__(self, send):
         self.send = send
-        self.vad = None if VAD_KIND == "silero" else webrtcvad.Vad(VAD_MODE)
         self.pending = np.zeros(0, dtype=np.int16)   # not yet framed
         self.speech = np.zeros(0, dtype=np.int16)    # current utterance
         # แยกบัฟเฟอร์ที่มีแต่เฟรมซึ่ง VAD บอกว่าเป็นเสียงพูด ไว้ป้อน embedding อย่างเดียว
@@ -158,8 +137,6 @@ class Session:
         self.vlock = threading.Lock()
         self.votes = {}              # seg_id -> [speaker id ของแต่ละหน้าต่าง]
         self.inflight = {}           # seg_id -> จำนวน embedding ที่สั่งไปแล้วยังไม่เสร็จ
-        self.recent = []             # ผู้พูดของหน้าต่างล่าสุด ใช้ดูว่าเปลี่ยนคนหรือยัง
-        self.want_cut = False        # ตั้งจากเธรด embedding ให้ลูปหลักมาตัดให้
         self.last_emb = 0.0
         # นับเสียงที่รับเข้ามาแล้วเป็นตัวอย่าง ใช้บอกฝั่ง client ว่าผลลัพธ์นี้เป็นของ
         # เสียงถึงวินาทีไหน จะได้วัด lag จากเวลาในสตรีมจริง ไม่ใช่จากนาฬิกาเบราว์เซอร์
@@ -180,13 +157,9 @@ class Session:
         # และโหมดสตรีมก็ผูกกับภาระ GPU ขณะนั้น ทำให้รันซ้ำได้ผลไม่เหมือนเดิม
         # นับจากจำนวนตัวอย่างที่รับมาแล้วจึงได้ผลเดิมทุกครั้งไม่ว่าป้อนเร็วหรือช้า
         try:
-            if self.vad is None:
-                import torch
-                with _vad_lock, torch.no_grad():
-                    t = torch.from_numpy(frame.astype(np.float32) / 32768.0)
-                    voiced = _silero(t, SR).item() >= SILERO_THRESH
-            else:
-                voiced = self.vad.is_speech(frame.tobytes(), SR)
+            with _vad_lock, torch.no_grad():
+                t = torch.from_numpy(frame.astype(np.float32) / 32768.0)
+                voiced = _silero(t, SR).item() >= SILERO_THRESH
         except Exception:
             voiced = False
         now = self.consumed / SR
@@ -196,8 +169,7 @@ class Session:
             self.silence_started = None
             self.speech = np.concatenate([self.speech, frame])
             self.voiced = np.concatenate([self.voiced, frame])
-            if self.want_cut or len(self.speech) >= SR * MAX_SEGMENT:
-                self.want_cut = False
+            if len(self.speech) >= SR * MAX_SEGMENT:
                 self._finalize(overlap=True)
                 return
         elif self.in_speech:
@@ -235,18 +207,6 @@ class Session:
                 return
             with self.vlock:
                 self.votes.setdefault(seg, []).append(sid)
-                earlier = self.votes[seg][:-CHANGE_WINDOWS] if CHANGE_WINDOWS else []
-                if CHANGE_WINDOWS:
-                    self.recent.append(sid)
-                    del self.recent[:-CHANGE_WINDOWS]
-                    settled = (len(self.recent) == CHANGE_WINDOWS
-                               and len(set(self.recent)) == 1)
-                else:
-                    settled = False
-            # เห็นคนเดียวกันติดกันครบแล้ว และไม่ใช่คนที่ครองประโยคนี้อยู่ = เปลี่ยนคนจริง
-            if settled and earlier and max(set(earlier), key=earlier.count) != sid \
-                    and len(self.voiced) >= SR * CHANGE_MIN_SEC:
-                self.want_cut = True
         finally:
             with self.vlock:
                 self.inflight[seg] = self.inflight.get(seg, 1) - 1
@@ -299,7 +259,6 @@ class Session:
             return
         seg_end, seg = self.consumed, self.seg_id
         self.seg_id += 1             # หน้าต่างที่สั่งหลังจากนี้จะนับเข้าประโยคถัดไป
-        self.recent = []
         asyncio.get_event_loop().run_in_executor(
             None, self._emit_final, buf, seg_end, seg)
 

@@ -18,10 +18,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Versions pinned to the set verified working on an RTX 3070 (driver 591.86).
-# webrtcvad-wheels แทน webrtcvad: ตัวต้นทางเป็น C extension ที่ไม่มี wheel บน PyPI
-# ต้องมี gcc ถึงจะติดตั้งได้ ซึ่ง python:3.10-slim ไม่มี ตัวนี้เป็นแพ็กเกจเดียวกัน
-# ที่ปล่อย wheel มาให้ `import webrtcvad` เหมือนเดิม โค้ดไม่ต้องแก้
-#
 # pyannote.audio ต้องเป็น 4.x — 3.3.2 เรียก torchaudio.AudioMetaData ซึ่งถูกถอด
 # ออกไปแล้วใน torchaudio 2.11 ใช้สำหรับโมเดล speaker embedding ของ diarize.py
 RUN pip install --no-cache-dir \
@@ -31,8 +27,7 @@ RUN pip install --no-cache-dir \
         torchaudio==2.11.0 \
         numpy==2.0.1 \
         scipy==1.13.0 \
-        websockets==12.0 \
-        webrtcvad-wheels==2.0.14
+        websockets==12.0
 
 # แยกเป็นอีก layer โดยตั้งใจ ถ้ารวมไว้ในคำสั่งเดียวข้างบน resolver จะต้องหาทางที่
 # สอดคล้องกับทุก pin พร้อมกันแล้วแก้ไม่ได้ ลงทีหลังมันจะยึดของที่ติดตั้งแล้วเป็นฐาน

@@ -7,7 +7,6 @@ duplex:"half" ซึ่งรองรับเฉพาะ Chromium — WebSock
 โหลดโมเดลครั้งเดียวตอน import (typhoon_server ทำให้แล้ว) ทุก connection ใช้ร่วมกัน
 """
 import asyncio
-import io
 import json
 import subprocess
 import tempfile
@@ -15,7 +14,6 @@ import time
 
 import numpy as np
 from fastapi import FastAPI, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
-from fastapi.responses import JSONResponse
 from scipy.signal import resample
 
 # import แล้วโมเดลถูกโหลดทันที (typhoon_server มี guard __main__ ไม่ให้สตาร์ท ws server)
@@ -34,28 +32,6 @@ SR = engine.SR
 def health():
     return {"ok": True, "version": engine.VERSION,
             "model": engine.MODEL_ID, "diarize": engine.embedder is not None}
-
-
-@app.get("/v1/version")
-def version():
-    """คืนทั้ง history ไม่ใช่แค่เลขเวอร์ชัน ใช้ดูได้ว่ารุ่นที่รันอยู่แก้อะไรไปบ้าง"""
-    import os
-    p = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(engine.__file__))),
-                     "thai-realtime-stt-main", "version.json")
-    for cand in (p, "/app/version.json"):
-        try:
-            with open(cand) as f:
-                return json.load(f)
-        except OSError:
-            continue
-    return {"version": engine.VERSION}
-
-
-@app.get("/v1/config")
-def config():
-    """ค่าที่ engine ใช้อยู่จริง ณ ตอนนี้ — ตรงกับบรรทัด CONFIG ใน log"""
-    cfg = dict(engine._cfg)
-    return {"version": engine.VERSION, "config": cfg}
 
 
 def _decode_to_pcm16k(data: bytes, filename: str) -> np.ndarray:

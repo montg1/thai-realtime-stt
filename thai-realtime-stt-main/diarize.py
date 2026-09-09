@@ -4,8 +4,7 @@
 SpeakerHandler ตัดส่วนที่ผูกกับ PyQt และ soundcard ออก ของเดิมทำงานบน Windows
 ผ่าน loopback + GUI ส่วนที่นี่รับ numpy array จาก websocket โดยตรง
 
-ตัวสกัด embedding ใช้ pyannote WeSpeaker ResNet34-LM ตามต้นฉบับ (DIAR_EMB=titanet
-สลับไปใช้ TitaNet-large ของ NeMo ได้ ซึ่งไม่ต้องพึ่ง pyannote แต่ต้องใช้หน้าต่างยาวกว่า)
+ตัวสกัด embedding ใช้ pyannote WeSpeaker ResNet34-LM ตามต้นฉบับ
 """
 import os
 import threading
@@ -15,13 +14,11 @@ import numpy as np
 SR = 16000
 
 # ค่า default ตรงกับของ Utterr เพราะจูนมากับ WeSpeaker เหมือนกัน และเป็นชุดที่ทดสอบจริง
-# บนคลิปไทย 4 คลิป ถ้าสลับไป TitaNet ต้องปรับเอง สเกล cosine ของมันคนละแบบ
 #
 # ความยาวหน้าต่าง วัดบนคลิปทีวีไทย 3 นาที (cos ในกลุ่ม / ข้ามกลุ่ม / แบ่ง k=2 ได้):
-#            WeSpeaker                TitaNet
-#   1.5s   0.264 0.082  176/3      0.330 0.037  178/1   <- สั้นไป แยกไม่ออกทั้งคู่
-#   3.0s   0.434 0.170  152/25     0.528 0.205  149/28  <- ใช้ค่านี้
-#   5.0s   0.520 0.218  149/26     0.616 0.264  142/33
+#   1.5s   0.264 0.082  176/3   <- สั้นไป แยกไม่ออก
+#   3.0s   0.434 0.170  152/25  <- ใช้ค่านี้
+#   5.0s   0.520 0.218  149/26
 #
 # หน้าต่างยาวขึ้น embedding นิ่งขึ้น แต่จับการสลับผู้พูดได้ช้าลง 3.0s เป็นจุดที่พอดี
 # ทุกค่าปรับผ่าน env ได้ เพราะขึ้นกับไมค์ ห้อง และเสียงรบกวนของงานจริง
@@ -44,28 +41,19 @@ MIN_SEG_SEC = float(os.environ.get("DIAR_MIN_SEG", "0.8"))
 class Embedder:
     """เสียงหนึ่งช่วง -> เวกเตอร์ลักษณะเฉพาะของผู้พูด
 
-    เลือกได้ผ่าน DIAR_EMB: "wespeaker" (ค่าเริ่มต้น) หรือ "titanet"
     WeSpeaker ResNet34-LM เทรนด้วย large-margin finetuning มาเพื่อให้ระยะห่างระหว่าง
-    คนกว้าง ซึ่งเป็นสิ่งที่ clustering ต้องการโดยตรง ส่วน TitaNet บีบสเกลแคบกว่า
-    (วัดแล้วในคอมเมนต์ด้านบน) จึงต้องใช้หน้าต่างยาวและยังแยกได้แย่กว่า
+    คนกว้าง ซึ่งเป็นสิ่งที่ clustering ต้องการโดยตรง
     """
+    kind = "wespeaker"
 
-    def __init__(self, device="cuda", kind=None):
+    def __init__(self, device="cuda"):
         import torch
+        from pyannote.audio import Model
         self.torch = torch
         self.device = device
         self.lock = threading.Lock()
-        self.kind = kind or os.environ.get("DIAR_EMB", "wespeaker")
-        if self.kind == "titanet":
-            import nemo.collections.asr as nemo_asr
-            self.model = nemo_asr.models.EncDecSpeakerLabelModel.from_pretrained(
-                "titanet_large", map_location=device)
-        else:
-            from pyannote.audio import Model
-            self.model = Model.from_pretrained(
-                "pyannote/wespeaker-voxceleb-resnet34-LM")
-            self.model = self.model.to(torch.device(device))
-        self.model.eval()
+        self.model = Model.from_pretrained("pyannote/wespeaker-voxceleb-resnet34-LM")
+        self.model = self.model.to(torch.device(device)).eval()
 
     def __call__(self, samples_i16):
         if len(samples_i16) < SR * MIN_SEG_SEC:
@@ -73,11 +61,7 @@ class Embedder:
         audio = samples_i16.astype(np.float32) / 32768.0
         with self.lock, self.torch.no_grad():
             t = self.torch.tensor(audio).unsqueeze(0).to(self.device)
-            if self.kind == "titanet":
-                ln = self.torch.tensor([t.shape[1]]).to(self.device)
-                _, emb = self.model.forward(input_signal=t, input_signal_length=ln)
-            else:
-                emb = self.model(t.unsqueeze(0))   # (batch, channel, sample)
+            emb = self.model(t.unsqueeze(0))   # (batch, channel, sample)
         return emb.squeeze().cpu().numpy()
 
 
