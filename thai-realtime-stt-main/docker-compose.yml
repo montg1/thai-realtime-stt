@@ -1,0 +1,82 @@
+# ระบบเต็มชุด: API (GPU) + หน้าเว็บ + Caddy ทำ https
+#
+#   docker compose up -d          เปิดทั้งระบบ
+#   docker compose logs -f api    ดู log ตอนโหลดโมเดล (~2 นาทีครั้งแรก)
+#
+# ต้องมี https ไม่งั้น Chrome ไม่ให้ใช้ไมโครโฟน — getUserMedia ทำงานเฉพาะบน
+# secure context (https หรือ http://localhost) LAN IP ธรรมดาไม่เข้าข่าย
+
+services:
+  api:
+    build: .
+    image: thai-stt-api:${VERSION:-latest}
+    container_name: stt-api
+    restart: unless-stopped
+    environment:
+      # .nemo ในโวลุ่ม โหลดครั้งแรกด้วย profile bootstrap ข้างล่าง
+      ASR_MODEL: ${ASR_MODEL:-/models/nemo/pathumma-stt-th-fastconformer-rnnt-large.nemo}
+      DIARIZE: ${DIARIZE:-1}
+      # ค่าจูนทั้งหมดปรับได้จาก .env โดยไม่ต้อง build ใหม่ ดูคำอธิบายใน typhoon_server.py
+      MAX_SEGMENT: ${MAX_SEGMENT:-5.0}
+      SEG_OVERLAP: ${SEG_OVERLAP:-0.6}
+      DIAR_HOP: ${DIAR_HOP:-0.25}
+      DIAR_WINDOW: ${DIAR_WINDOW:-3.0}
+      DIAR_CHANGE_WIN: ${DIAR_CHANGE_WIN:-0}
+      HF_TOKEN: ${HF_TOKEN:-}
+    volumes:
+      - models:/models
+      - torch-cache:/root/.cache/torch      # silero VAD โหลดครั้งเดียวพอ
+      - hf-cache:/root/.cache/huggingface   # WeSpeaker embedding
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      # โหลดโมเดลนานเป็นนาที start_period จึงยาว ไม่งั้นจะถูกมองว่า unhealthy ตั้งแต่แรก
+      test: ["CMD", "python3", "-c",
+             "import urllib.request;urllib.request.urlopen('http://localhost:8000/v1/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 300s
+
+  # โหลดไฟล์ .nemo ลงโวลุ่มครั้งแรก รันครั้งเดียวแล้วจบ
+  #   docker compose --profile bootstrap up bootstrap
+  bootstrap:
+    image: thai-stt-api:${VERSION:-latest}
+    profiles: [bootstrap]
+    volumes:
+      - models:/models
+    entrypoint: ["python3", "-c"]
+    command:
+      - |
+        from huggingface_hub import hf_hub_download
+        p = hf_hub_download("nectec/Pathumma-stt-th-fastconformer-rnnt-large",
+                            "pathumma-stt-th-fastconformer-rnnt-large.nemo",
+                            local_dir="/models/nemo")
+        print("saved:", p)
+
+  caddy:
+    image: caddy:2
+    container_name: stt-caddy
+    restart: unless-stopped
+    depends_on: [api]
+    ports:
+      - "${HTTPS_PORT:-9121}:9121"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./typhoon_client:/srv/admin:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  models:
+  torch-cache:
+  hf-cache:
+  caddy-data:
+  caddy-config:

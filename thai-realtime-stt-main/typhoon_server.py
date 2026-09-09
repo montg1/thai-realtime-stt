@@ -164,6 +164,12 @@ class Session:
             self._frame(frame)
 
     def _frame(self, frame):
+        # ทุกตัวจับเวลาในนี้นับจาก "เวลาในสตรีมเสียง" ไม่ใช่นาฬิกาจริง
+        #
+        # เดิมใช้ time.time() ซึ่งพังสองทาง: โหมด batch ป้อนเสียง 30 วินาทีหมดใน 0.1
+        # วินาทีจริง ตัวจับเวลาจึงไม่เคยถึงเกณฑ์ embedding เลย (ได้ speaker=None ทุกประโยค)
+        # และโหมดสตรีมก็ผูกกับภาระ GPU ขณะนั้น ทำให้รันซ้ำได้ผลไม่เหมือนเดิม
+        # นับจากจำนวนตัวอย่างที่รับมาแล้วจึงได้ผลเดิมทุกครั้งไม่ว่าป้อนเร็วหรือช้า
         try:
             if self.vad is None:
                 import torch
@@ -174,7 +180,7 @@ class Session:
                 voiced = self.vad.is_speech(frame.tobytes(), SR)
         except Exception:
             voiced = False
-        now = time.time()
+        now = self.consumed / SR
 
         if voiced:
             self.in_speech = True
@@ -318,4 +324,7 @@ async def main():
         await asyncio.Future()
 
 
-asyncio.run(main())
+# ป้องกันไม่ให้สตาร์ทเซิร์ฟเวอร์ตอนถูก import — api/main.py ต้องการแค่ Session,
+# transcribe และค่า config ไม่ได้ต้องการ websockets server ตัวนี้
+if __name__ == "__main__":
+    asyncio.run(main())

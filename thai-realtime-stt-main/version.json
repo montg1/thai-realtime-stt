@@ -1,7 +1,21 @@
 {
-  "version": "0.5.0",
-  "date": "2026-09-08",
+  "version": "0.6.0",
+  "date": "2026-09-09",
   "history": [
+    {
+      "version": "0.6.0",
+      "date": "2026-09-09",
+      "title": "FastAPI + docker compose ครบชุด",
+      "changes": [
+        "api/main.py: FastAPI ครอบ engine เดิม — WS /v1/stream (โปรโตคอลเดิม), POST /v1/transcribe (ไฟล์ทั้งก้อน), GET /v1/health /v1/version /v1/config",
+        "ไม่ใช้ SSE รับเสียงเพราะ SSE เป็นทางเดียว server->client ไม่มีช่องส่งขึ้น",
+        "typhoon_server: Session ใช้เวลาในสตรีมเสียงแทนนาฬิกาจริง — เดิม batch ป้อน 30 วินาทีหมดใน 0.1 วินาที ตัวจับเวลาไม่เคยถึงเกณฑ์ ได้ speaker=None ทุกประโยค และโหมดสตรีมก็ผูกกับภาระ GPU ทำให้รันซ้ำผลไม่เหมือนเดิม",
+        "typhoon_server: ใส่ guard __main__ ให้ import ได้โดยไม่สตาร์ท ws server",
+        "docker-compose.yml: api (GPU) + caddy (https) + profile bootstrap โหลดโมเดล, healthcheck start_period 300s เพราะโหลดโมเดลนาน",
+        "Caddyfile: /ws -> /v1/stream, /v1/* และ /docs ไปที่ api ที่เหลือเป็นไฟล์ static",
+        ".env.example: ค่าจูนทั้งหมดปรับได้โดยไม่ต้อง build ใหม่"
+      ]
+    },
     {
       "version": "0.5.0",
       "date": "2026-09-08",

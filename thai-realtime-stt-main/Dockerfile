@@ -38,11 +38,17 @@ RUN pip install --no-cache-dir \
 # สอดคล้องกับทุก pin พร้อมกันแล้วแก้ไม่ได้ ลงทีหลังมันจะยึดของที่ติดตั้งแล้วเป็นฐาน
 RUN pip install --no-cache-dir "pyannote.audio==4.0.7"
 
+# FastAPI ครอบ engine เดิม — แยก layer เหมือน pyannote ด้วยเหตุผลเดียวกัน
+RUN pip install --no-cache-dir \
+        "fastapi==0.115.6" "uvicorn[standard]==0.34.0" "python-multipart==0.0.20"
+
 WORKDIR /app
-COPY typhoon_server.py /app/
+COPY typhoon_server.py diarize.py version.json /app/
+COPY api /app/api
 
 # Model weights (~450 MB) download on first run into this volume, not the image.
 VOLUME ["/models"]
-EXPOSE 9002
+EXPOSE 8000
 
-CMD ["python3", "/app/typhoon_server.py"]
+# ค่าเริ่มต้นเป็น API ตัวเดิมยังรันได้ด้วย: python3 /app/typhoon_server.py
+CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", "--app-dir", "/app"]
