@@ -50,7 +50,7 @@ EMB_EVERY = float(os.environ.get("DIAR_HOP", "0.25"))   # ถี่แค่ไ�
 #
 # ปิดไว้เพราะทดลองแล้วผลแย่ลง: ประโยคสั้นลงเหลือ ~1.2s ทำให้หน้าต่าง embedding
 # ต่อประโยคเหลือ ~5 อันจากเดิม ~20 โหวตผู้พูดจึงพลิกง่ายและแบ่งคนมั่วขึ้น
-# ถ้าจะลองใหม่ควรแก้ race ของ spk_votes ก่อน แล้วตั้ง DIAR_CHANGE_WIN=3
+# race ของโหวตแก้แล้วใน v0.8.0 เปิดได้ด้วย DIAR_CHANGE_WIN=3 ถ้าวัดแล้วดีกว่า
 CHANGE_WINDOWS = int(os.environ.get("DIAR_CHANGE_WIN", "0"))
 # ประโยคต้องยาวพอควรก่อนถึงยอมให้ตัด ไม่งั้นจะแตกเป็นเศษสั้น ๆ จน ASR ถอดไม่ได้เรื่อง
 CHANGE_MIN_SEC = float(os.environ.get("DIAR_CHANGE_MIN", "1.2"))
@@ -148,7 +148,16 @@ class Session:
         self.last_sent = ""
         # ผู้พูดสะสมต่อการเชื่อมต่อ ไม่ใช่ต่อทั้งเซิร์ฟเวอร์ คนละห้องประชุมจะได้ไม่ปนกัน
         self.spk = diarize.SpeakerHandler() if embedder else None
-        self.spk_votes = []          # ผู้พูดที่ทายได้จากแต่ละหน้าต่างในประโยคนี้
+        # โหวตผู้พูดแยกเก็บตาม segment id ไม่ใช่ลิสต์เดียว
+        #
+        # เดิม _emit_final สลับลิสต์ทิ้ง (votes, self.spk_votes = self.spk_votes, [])
+        # ขณะที่ _emit_embedding ของอีกเธรดยัง append อยู่ โหวตที่มาถึงระหว่างนั้น
+        # จะหายไปหรือถูกนับเข้าประโยคถัดไป ยิ่งประโยคสั้นยิ่งพลิกคำตอบง่าย
+        # ติดป้าย segment ไว้ตั้งแต่ตอนสั่งงานจึงไม่มีทางไปโผล่ผิดประโยค
+        self.seg_id = 0
+        self.vlock = threading.Lock()
+        self.votes = {}              # seg_id -> [speaker id ของแต่ละหน้าต่าง]
+        self.inflight = {}           # seg_id -> จำนวน embedding ที่สั่งไปแล้วยังไม่เสร็จ
         self.recent = []             # ผู้พูดของหน้าต่างล่าสุด ใช้ดูว่าเปลี่ยนคนหรือยัง
         self.want_cut = False        # ตั้งจากเธรด embedding ให้ลูปหลักมาตัดให้
         self.last_emb = 0.0
@@ -203,36 +212,69 @@ class Session:
         if self.in_speech and self.spk is not None and now - self.last_emb >= EMB_EVERY:
             self.last_emb = now
             win = self.voiced[-int(SR * diarize.WINDOW_SEC):].copy()
-            asyncio.get_event_loop().run_in_executor(None, self._emit_embedding, win)
+            seg = self.seg_id
+            with self.vlock:
+                self.inflight[seg] = self.inflight.get(seg, 0) + 1
+            asyncio.get_event_loop().run_in_executor(
+                None, self._emit_embedding, win, seg)
 
         if self.in_speech and now - self.last_realtime >= REALTIME_EVERY:
             self.last_realtime = now
             asyncio.get_event_loop().run_in_executor(None, self._emit_realtime)
 
-    def _emit_embedding(self, win):
+    def _emit_embedding(self, win, seg):
         """จัดกลุ่มผู้พูดจากหน้าต่างสั้น ๆ ระหว่างที่ยังพูดอยู่
 
         ทำที่ระดับหน้าต่างไม่ใช่ระดับประโยค เพราะกอง pending ต้องสะสมให้ถึง MIN_CLUSTER
         ก่อนจะตั้งผู้พูดใหม่ได้ ถ้าเก็บประโยคละชิ้นกว่าจะครบก็ผ่านไปหลายนาที
         และประโยคเดียวอาจยาวเป็นสิบวินาทีจนมีหลายคนพูดอยู่ข้างใน
         """
-        sid, _ = self.spk.classify(embedder(win))
-        if sid is None:
-            return
-        self.spk_votes.append(sid)
+        try:
+            sid, _ = self.spk.classify(embedder(win))
+            if sid is None:
+                return
+            with self.vlock:
+                self.votes.setdefault(seg, []).append(sid)
+                earlier = self.votes[seg][:-CHANGE_WINDOWS] if CHANGE_WINDOWS else []
+                if CHANGE_WINDOWS:
+                    self.recent.append(sid)
+                    del self.recent[:-CHANGE_WINDOWS]
+                    settled = (len(self.recent) == CHANGE_WINDOWS
+                               and len(set(self.recent)) == 1)
+                else:
+                    settled = False
+            # เห็นคนเดียวกันติดกันครบแล้ว และไม่ใช่คนที่ครองประโยคนี้อยู่ = เปลี่ยนคนจริง
+            if settled and earlier and max(set(earlier), key=earlier.count) != sid \
+                    and len(self.voiced) >= SR * CHANGE_MIN_SEC:
+                self.want_cut = True
+        finally:
+            with self.vlock:
+                self.inflight[seg] = self.inflight.get(seg, 1) - 1
 
-        if not CHANGE_WINDOWS:
+    def _take_votes(self, seg):
+        """รอ embedding ของ segment นี้ให้เสร็จก่อน แล้วค่อยเอาโหวตไปนับ
+
+        มีเพดานเวลา เพราะถ้าเธรดไหนค้างจะได้ไม่ลากประโยคค้างตามไปด้วย
+        ยอมเสียโหวตที่มาช้าดีกว่าไม่ส่งข้อความออกเลย
+        """
+        if seg is None:
+            return []
+        deadline = time.time() + 0.5
+        while time.time() < deadline:
+            with self.vlock:
+                if not self.inflight.get(seg):
+                    break
+            time.sleep(0.01)
+        with self.vlock:
+            self.inflight.pop(seg, None)
+            return self.votes.pop(seg, [])
+
+    def _drop_votes(self, seg):
+        if seg is None:
             return
-        self.recent.append(sid)
-        del self.recent[:-CHANGE_WINDOWS]
-        if len(self.recent) < CHANGE_WINDOWS or len(set(self.recent)) != 1:
-            return
-        # หน้าต่างล่าสุดเห็นคนเดียวกันติดกันครบแล้ว ถ้าไม่ใช่คนที่ครองประโยคนี้อยู่
-        # แปลว่าเปลี่ยนคนพูดจริง สั่งให้ตัดประโยค ณ จุดนี้
-        earlier = self.spk_votes[:-CHANGE_WINDOWS]
-        if earlier and max(set(earlier), key=earlier.count) != sid \
-                and len(self.voiced) >= SR * CHANGE_MIN_SEC:
-            self.want_cut = True
+        with self.vlock:
+            self.votes.pop(seg, None)
+            self.inflight.pop(seg, None)
 
     def _emit_realtime(self):
         buf = self.speech.copy()
@@ -255,13 +297,16 @@ class Session:
         self.last_sent = ""
         if len(buf) < SR * MIN_SPEECH:
             return
-        seg_end = self.consumed
+        seg_end, seg = self.consumed, self.seg_id
+        self.seg_id += 1             # หน้าต่างที่สั่งหลังจากนี้จะนับเข้าประโยคถัดไป
+        self.recent = []
         asyncio.get_event_loop().run_in_executor(
-            None, lambda: self._emit_final(buf, seg_end))
+            None, self._emit_final, buf, seg_end, seg)
 
-    def _emit_final(self, buf, seg_end=0):
-        text = transcribe(buf)
+    def _emit_final(self, buf, seg_end=0, seg=None):
+        text = transcribe(buf)       # ~0.3s embedding ที่ค้างมักเสร็จระหว่างนี้พอดี
         if not text:
+            self._drop_votes(seg)
             return
         # seg_end = ตำแหน่งในสตรีมที่ประโยคนี้จบ client เอาไปลบกับเสียงที่ส่งไปแล้ว
         # ได้ lag จริงว่า "พูดจบไปแล้วกี่มิลลิวินาทีถึงเห็นข้อความ"
@@ -271,8 +316,7 @@ class Session:
             # ผู้พูดของประโยค = เสียงข้างมากของหน้าต่างย่อยทั้งหมดในประโยคนั้น
             # ประโยคที่มีหลายคนพูดคาบกันจะได้แค่คนที่พูดมากที่สุด แยกละเอียดกว่านี้
             # ต้องมี word timestamp มาจับคู่กับ timeline ของผู้พูด
-            votes, self.spk_votes = self.spk_votes, []
-            self.recent = []
+            votes = self._take_votes(seg)
             if votes:
                 sid = max(set(votes), key=votes.count)
                 msg["speaker"] = sid
