@@ -1,9 +1,11 @@
-"""WebSocket ASR server backed by Typhoon ASR (NeMo FastConformer-Transducer).
+"""Engine ถอดเสียง: VAD, ตัดประโยค, จัดคิวถอดเสียง และแยกผู้พูด
 
-Speaks the same wire protocol as example_browserclient/server.py so the existing
-client.js works unchanged:
-    inbound : [4-byte LE metadata length][metadata JSON][raw int16 PCM]
-    outbound: {"type": "realtime"|"fullSentence", "text": ...}
+api/main.py import ไฟล์นี้เพื่อใช้ Session กับ transcribe — โมเดลถูกโหลดตอน import
+ครั้งเดียว ทุก connection ใช้ร่วมกัน
+
+โปรโตคอลสาย (ดูรายละเอียดใน README):
+    ขาขึ้น : [4 ไบต์ int32 LE ความยาว metadata][metadata JSON][PCM int16 LE mono]
+    ขาลง   : {"type": "hello"|"realtime"|"fullSentence", ...}
 """
 import asyncio
 import json
