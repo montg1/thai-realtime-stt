@@ -1,5 +1,22 @@
 # บันทึกผล benchmark
 
+## วัดใหม่ 2026-09-09 หลังเปลี่ยนมาใช้เวลาในสตรีมเสียง (v0.6.0, `api_r1..3.json`)
+
+| Ratchada 50 | เดิม (v0.1) | ใหม่ (v0.6 API) |
+|---|---|---|
+| CER realtime | 25.91% | **25.33%** |
+| CER final | 26.34% | **25.99%** |
+| latency final | 0.78s | **0.76s** |
+| spread 3 รอบ | 0.00 | 0.05 |
+
+ตัวเลขเดิมยังใช้อ้างอิงได้ ไม่ได้เพี้ยนจากการเปลี่ยนตัวจับเวลา
+
+**Ratchada ใช้วัด diarization ไม่ได้** — `bench.py` เปิด websocket ใหม่ทุกคลิป
+SpeakerHandler จึงรีเซ็ตทุกครั้งและสะสมไม่ถึง MIN_CLUSTER ก่อนคลิปจบ (ได้ speaker 0/50)
+ต้องใช้ `eval_diar.py` ที่ใช้ connection เดียวตลอดเหมือนการประชุมจริง — วัดล่าสุด
+บน Thanarit/Thai-Voice-Test-Speaker-Only ได้ pairwise accuracy 100%
+
+
 > ⚠️ **ตัวเลขสาย `final` ทั้งหมดในหน้านี้วัดบน decoding ที่พิการ** — วัดด้วย
 > `montg1/realtimestt:v1.1-GPU` ซึ่ง `audio_recorder.py:769-773` ฮาร์ดโค้ด `beam_size=1`
 > และคอมเมนต์ `initial_prompt` กับ `suppress_tokens` ทิ้ง (ดู `thai-realtime-stt-main/NOTES.md`
