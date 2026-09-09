@@ -16,7 +16,7 @@ export function useStt() {
   const [sentences, setSentences] = useState([]);
   const [interim, setInterim] = useState("");
   const [mode, setMode] = useState(null);        // null | "mic" | "file"
-  const [level, setLevel] = useState(0);         // 0..1 สำหรับมิเตอร์เสียง
+  const [bands, setBands] = useState(() => new Array(13).fill(0));  // มิเตอร์ 13 ย่าน
   const [play, setPlay] = useState({ pos: 0, dur: 0 });
   const [stats, setStats] = useState({ lags: [], rtFirst: null, points: [], drift: 0, sent: 0 });
 
@@ -92,7 +92,7 @@ export function useStt() {
     a.stream?.getTracks().forEach(t => t.stop());
     a.ctx?.close();
     audio.current = {};
-    setMode(null); setLevel(0);
+    setMode(null); setBands(new Array(13).fill(0));
   }, []);
 
   const startMic = useCallback(async () => {
@@ -110,10 +110,16 @@ export function useStt() {
     audio.current = { ctx, src, node, stream, analyser };
     setMode("mic");
 
+    // เฉลี่ยเป็นย่านความถี่เหมือนของเดิม แท่งจะได้ขยับไม่พร้อมกันเป็นสเปกตรัมจริง
     const tick = () => {
       const buf = new Uint8Array(analyser.frequencyBinCount);
       analyser.getByteFrequencyData(buf);
-      setLevel(buf.reduce((a, b) => a + b, 0) / buf.length / 255);
+      const step = Math.floor(buf.length / 13) || 1;
+      setBands(Array.from({ length: 13 }, (_, i) => {
+        let sum = 0;
+        for (let j = 0; j < step; j++) sum += buf[i * step + j] || 0;
+        return sum / step / 255;
+      }));
       raf.current = requestAnimationFrame(tick);
     };
     tick();
@@ -154,6 +160,6 @@ export function useStt() {
     tick();
   }, [send, stop]);
 
-  return { connected, info, sentences, interim, mode, level, play, stats,
+  return { connected, info, sentences, interim, mode, bands, play, stats,
            startMic, startFile, stop, clear: reset };
 }

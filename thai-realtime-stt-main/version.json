@@ -1,7 +1,17 @@
 {
-  "version": "0.7.0",
+  "version": "0.7.1",
   "date": "2026-09-09",
   "history": [
+    {
+      "version": "0.7.1",
+      "date": "2026-09-09",
+      "title": "ปรับหน้าตา React ให้ตรงกับหน้าเดิม",
+      "changes": [
+        "หน้าไมโครโฟน: footer เป็นคอลัมน์กลางจอ ปุ่มไมค์ 76px มี SVG, มิเตอร์ 13 ย่านความถี่จริงจาก analyser, ข้อความกว้างสุด 44rem จัดกลาง, ปุ่ม copy/clear กลับไปอยู่ header, กด Space เริ่ม/หยุดได้",
+        "หน้าวัดผล: ปุ่ม Select Audio File / Speak via Microphone / Stop / Play Audio ย้ายไปมุมขวาบนของ header ตามหน้าเดิม การ์ดผู้พูดอยู่คอลัมน์ขวาพร้อมช่องตั้งชื่อ session",
+        "index.css คัดค่าจาก typhoon_client/index.html มาตรง ๆ ทั้งสี ขนาดฟอนต์ และระยะห่าง"
+      ]
+    },
     {
       "version": "0.7.0",
       "date": "2026-09-09",

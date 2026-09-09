@@ -1,27 +1,23 @@
 /* หน้าพิสูจน์ว่าตามทันเวลาจริง — เล่นไฟล์ไปด้วย วัดหน่วงไปด้วย */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { colorOf } from "../lib/speakers";
-import { SpeakerBar, countSpeakers, useSpeakerNames } from "../components/Speakers";
+import { useSpeakerNames } from "../components/Speakers";
 
 const fmt = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 const pct = (a, p) => a.length
   ? [...a].sort((x, y) => x - y)[Math.min(a.length - 1, Math.floor(a.length * p))] : 0;
 const lagClass = v => (v < 1 ? "ok" : v < 2 ? "warn" : "bad");
 
-export default function Prove({ stt }) {
-  const { sentences, interim, mode, play, stats, startFile, stop } = stt;
+export default function Prove({ stt, counts }) {
+  const { sentences, interim, mode, play, stats } = stt;
   const names = useSpeakerNames();
-  const counts = useMemo(() => countSpeakers(sentences), [sentences]);
-  const [withSound, setWithSound] = useState(true);
   const canvas = useRef(null);
 
   useEffect(() => draw(canvas.current, stats.points), [stats.points]);
 
   const { lags } = stats;
   return (
-    <>
-      <SpeakerBar counts={counts} />
-      <div className="prove scroll">
+    <div className="prove">
         <div className="col">
           {mode === "file" && (
             <div className="card">
@@ -96,21 +92,27 @@ export default function Prove({ stt }) {
           </div>
 
           <div className="card">
-            <h2>ทดสอบด้วยไฟล์</h2>
-            <label className="btn">
-              เลือกไฟล์เสียง
-              <input type="file" accept="audio/*" hidden
-                     onChange={e => e.target.files[0] && startFile(e.target.files[0], withSound)} />
-            </label>
-            <label className="check">
-              <input type="checkbox" checked={withSound}
-                     onChange={e => setWithSound(e.target.checked)} /> เล่นเสียงด้วย
-            </label>
-            {mode && <button className="ghost" onClick={stop}>หยุด</button>}
+            <h2>ผู้พูดที่แยกได้</h2>
+            <div className="spkrow">
+              <span className="sw" style={{ background: "var(--text-3)" }} />
+              <input defaultValue={names.session} placeholder="ชื่อ session"
+                     title="สองจอที่ใช้ชื่อนี้ตรงกันจะใช้ชุดชื่อผู้พูดเดียวกัน"
+                     onChange={e => names.setSession(e.target.value)} />
+            </div>
+            {[...counts.keys()].sort((a, b) => a - b).map(id => (
+              <div className="spkrow" key={id}>
+                <span className="sw" style={{ background: colorOf(id) }} />
+                <input placeholder={`คน ${id}`} value={names.raw(id)}
+                       onChange={e => names.set(id, e.target.value)} />
+                <span className="n">{counts.get(id)} ประโยค</span>
+              </div>
+            ))}
+            {!counts.size && (
+              <p className="hint">ยังไม่มี — พอระบบเจอผู้พูดจะขึ้นที่นี่ให้ตั้งชื่อได้</p>
+            )}
           </div>
         </div>
-      </div>
-    </>
+    </div>
   );
 }
 
