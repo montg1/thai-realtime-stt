@@ -1,7 +1,20 @@
 {
-  "version": "0.6.0",
+  "version": "0.7.0",
   "date": "2026-09-09",
   "history": [
+    {
+      "version": "0.7.0",
+      "date": "2026-09-09",
+      "title": "React + Vite frontend",
+      "changes": [
+        "web/: React 18 + Vite แทนหน้า HTML — สองหน้า (ไมโครโฟน, วัดผล) เป็นแท็บใน SPA เดียว",
+        "useStt hook: รวมโค้ด websocket + จับเสียง + วัดหน่วง ที่เดิมซ้ำกันใน client.js กับ prove.js",
+        "สลับแท็บแล้ว websocket ไม่ขาดและผู้พูดที่สะสมไว้ไม่รีเซ็ต ต่างจากเดิมที่เป็นคนละหน้า HTML",
+        "web/Dockerfile: multi-stage node -> nginx อิมเมจสุดท้ายไม่มี node ติดไปด้วย",
+        "Caddyfile: / เป็น React SPA, /admin/* ยังเป็นหน้า HTML เดิมไว้เป็นทางถอย",
+        "vite dev proxy /v1 กับ /ws ไปที่ API จะได้ไม่ติด CORS ตอนพัฒนา"
+      ]
+    },
     {
       "version": "0.6.0",
       "date": "2026-09-09",

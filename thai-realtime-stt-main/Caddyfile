@@ -46,8 +46,14 @@ https://{$SERVER_IP:192.168.10.234}:9121 {
 		reverse_proxy {$API_HOST:api}:8000
 	}
 
-	handle {
+	# หน้าเก่า (HTML ล้วน) ยังอยู่ที่ /admin/ ไว้เทียบและเป็นทางถอย
+	handle /admin/* {
 		root * /srv
 		file_server
+	}
+
+	# ที่เหลือเป็น React SPA
+	handle {
+		reverse_proxy {$WEB_HOST:web}:80
 	}
 }

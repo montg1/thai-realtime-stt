@@ -59,11 +59,17 @@ services:
                             local_dir="/models/nemo")
         print("saved:", p)
 
+  web:
+    build: ./web
+    image: thai-stt-web:${VERSION:-latest}
+    container_name: stt-web
+    restart: unless-stopped
+
   caddy:
     image: caddy:2
     container_name: stt-caddy
     restart: unless-stopped
-    depends_on: [api]
+    depends_on: [api, web]
     ports:
       - "${HTTPS_PORT:-9121}:9121"
     volumes:
